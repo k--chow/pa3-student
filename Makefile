@@ -26,7 +26,7 @@ output/%.run: output/%.o main.c
 output/%.o: output/%.s
 	nasm -f $(FORMAT) -o $@ $<
 
-output/%.s: input/%.boa main
+output/%.s: input/%.cop main
 	mkdir -p output
 	./main $< > $@
 

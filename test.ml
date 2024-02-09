@@ -46,6 +46,9 @@ let num_p_underflow = "-4611686018427387905"
 let failLet = "(let ((x  1) (y 1) (x 10)) x)"
 let failID = "x"
 
+let multiLet = "(let ((x 1)) x x x)"
+
+
 let autograde_compile_fail_tests =
   [
     ("add1_arguments", "(add1 true)", "Type mismatch");
@@ -94,6 +97,7 @@ let suite =
    t "isBoolTestF" isBoolTestF "false";
    t "isNumTest" isNumTest "true";
    t_i "inputTest" "(add1 input)" "6" ["5"];
+   t "multiLet" multiLet "1";
   ] @ testFailList
   @ MyTests.myTestList
 
