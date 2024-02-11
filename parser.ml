@@ -46,14 +46,18 @@ let rec parse sexp =
           EPrim2(Greater, parse second, parse third)
         | [Atom("=="); second; third] ->
           EPrim2(Equal, parse second, parse third)
-        | [Atom("let"); List(second); List(third)] ->
-          ELet(List.map parse_binding second, List.map parse third)
+        | Atom("let")::List(second)::third ->
+            ELet(List.map parse_binding second, List.map parse third)
         | [Atom("if"); second; third; fourth] ->
           EIf(parse second, parse third, parse fourth)    
         | [Atom("isNum"); second] ->
           EPrim1(IsNum, parse second)
         | [Atom("isBool"); second] ->
           EPrim1(IsBool, parse second)
+        | [Atom("set"); Atom second; third] ->
+          ESet(second, parse third)
+        | [Atom("while"); cond; List(third)] ->
+          EWhile(parse cond, List.map parse third)
         | _ -> failwith ("Invalid syntax " ^ Sexplib.Sexp.to_string(sexp))
        )
 

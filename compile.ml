@@ -1,6 +1,7 @@
 open Printf
 open Expr
 open Asm
+open Int64
 
 let rec find ls x =
   match ls with
@@ -21,6 +22,7 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
   match e with
   | ENumber(_) -> TNumber
   | EBool(_) -> TBoolean
+  | ELet(_, _) -> TNumber (* placeholder *)
   | EPrim1(op, e1) ->
       (match op with
       | Add1 -> 
@@ -44,8 +46,10 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
           let e2_t = tc_e e2 env in
           if e1_t == TNumber && e2_t == TNumber then TNumber
           else failwith ("Plus Mistype expected TNumber"))
-
-  | _ -> failwith "Not yet implemented"
+  | ESet(_, e1) ->
+      let e1_t = tc_e e1 env in
+      e1_t
+  | _ -> failwith "Not yet implemented type check"
 
 let rec precompile_bindings b env errs =
   match b with
@@ -77,6 +81,8 @@ let rec well_formed_e (e : expr) (env : (string * int) list) : string list =
   | EPrim2(_, e1, e2) ->
       (well_formed_e e1 env
       @ well_formed_e e2 env)
+  | ESet(_, e1) ->
+      well_formed_e e1 env
   | _ -> ["Not well formed"]
 
 let check (e : expr) : string list =
@@ -86,8 +92,8 @@ let check (e : expr) : string list =
 
 let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
-  | ELet(b, e) -> compile_let b e si [] (* reset when starting a new let! or clash *)
-  | EIf(cond, e1, e2) ->
+  ELet(b, e) -> compile_let b e si [] 
+  (*| EIf(cond, e1, e2) ->
       let if_branch = gen_temp "if_branch" in
       let end_if = gen_temp "end_if" in
       let boolean = compile_expr cond si env in (* bool in rax *) (* TODO: check its a bool *)
@@ -105,7 +111,7 @@ let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruc
           ILabel(if_branch);
         ]
       @ e1_true
-      @ [ILabel(end_if)];
+      @ [ILabel(end_if)];*)
   | EId(s) ->
     (match find env s with
     | None -> failwith ("Unbound variable identifier " ^ s)
@@ -118,6 +124,14 @@ let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruc
     | false -> [IMov(Reg(RAX), false_const)])
   | EPrim1(op, e1) -> compile_prim1 op e1 si env
   | EPrim2(op, e1, e2) -> compile_prim2 op e1 e2 si env
+  | ESet(s, e1) ->
+      let e1_eval = compile_expr e1 si env in
+      (match find env s with
+      | None -> failwith ("Fail set")
+      | Some(x) -> 
+          e1_eval
+          @ [IMov(stackloc x, Reg(RAX))]
+      )
   | _ -> failwith ("Not yet implemented expr: ")
 
 and compile_let b e si env =
@@ -132,8 +146,12 @@ and compile_let b e si env =
         @ [IMov(stackloc si, Reg(RAX))]
         @ compile_let rest e (si+1) ((v, si)::env)
   | [] ->
-      compile_expr e (si+1) env
-
+      match e with
+      | e1::rest ->
+          compile_expr e1 (si+1) env
+          @ compile_let [] rest (si+1) env
+      | [] -> []
+          
 and compile_prim1 op e si env =
   (* TODO *)
   failwith "Not yet implemented"
