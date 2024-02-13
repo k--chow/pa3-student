@@ -46,9 +46,14 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
           let e2_t = tc_e e2 env in
           if e1_t == TNumber && e2_t == TNumber then TNumber
           else failwith ("Plus Mistype expected TNumber"))
-  | ESet(_, e1) ->
+  | ESet(s, e1) ->
       let e1_t = tc_e e1 env in
+     (* replace the type here *) 
       e1_t
+  | EWhile(c, b) ->
+      let c_t = tc_e c env in
+      if c_t == TBoolean then TBoolean
+      else failwith ("While Mistype expected TBoolean")
   | _ -> failwith "Not yet implemented type check"
 
 let rec precompile_bindings b env errs =
@@ -83,6 +88,10 @@ let rec well_formed_e (e : expr) (env : (string * int) list) : string list =
       @ well_formed_e e2 env)
   | ESet(_, e1) ->
       well_formed_e e1 env
+  | EWhile(cond, body) ->
+      let apply_well_formed_e e_list = well_formed_e e_list env in
+      (well_formed_e cond env
+      @ List.concat (List.map apply_well_formed_e body))
   | _ -> ["Not well formed"]
 
 let check (e : expr) : string list =
@@ -92,15 +101,14 @@ let check (e : expr) : string list =
 
 let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
-  ELet(b, e) -> compile_let b e si [] 
-  (*| EIf(cond, e1, e2) ->
+  | ELet(b, e) -> (compile_let b e si []) 
+  | EIf(cond, e1, e2) ->
       let if_branch = gen_temp "if_branch" in
       let end_if = gen_temp "end_if" in
       let boolean = compile_expr cond si env in (* bool in rax *) (* TODO: check its a bool *)
       let e1_true = compile_expr e1 si env in
       let e2_false = compile_expr e2 si env in
       boolean
-      @ check_bool
       @ [
           ICmp(Reg(RAX), true_const);
           IJe(if_branch);
@@ -111,7 +119,7 @@ let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruc
           ILabel(if_branch);
         ]
       @ e1_true
-      @ [ILabel(end_if)];*)
+      @ [ILabel(end_if)];
   | EId(s) ->
     (match find env s with
     | None -> failwith ("Unbound variable identifier " ^ s)
@@ -132,6 +140,22 @@ let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruc
           e1_eval
           @ [IMov(stackloc x, Reg(RAX))]
       )
+  | EWhile(c, b) ->
+      let cond = compile_expr c si env in
+      let apply_compile_expr e1 = compile_expr e1 si env in
+      let start_while = gen_temp "start_while" in
+      let end_while = gen_temp "end_while" in
+      [ILabel("start_while")]
+      @ cond
+      @ [
+          ICmp(Reg(RAX), false_const);
+          IJe("end_while");
+        ]
+      @ List.concat (List.map apply_compile_expr b)
+      @ [
+          IJmp("start_while");
+          ILabel("end_while");
+        ]
   | _ -> failwith ("Not yet implemented expr: ")
 
 and compile_let b e si env =
