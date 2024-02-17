@@ -18,21 +18,28 @@ type typ =
   | TNumber
   | TBoolean
 
+type type_env = (string * typ) list
+type bind_list = (string * expr) list
+     
 let rec tc_e (e : expr) (env : (string * typ) list) : typ =
   match e with
   | ENumber(_) -> TNumber
   | EBool(_) -> TBoolean
-  | ELet(_, _) -> TNumber (* placeholder *)
-    
+  | ELet(b_list, e_list) -> 
+      (* do bindings first and return new_env
+       * do sequence and check if set used
+       * *)
+      let new_env = tc_b b_list env in
+      tc_seq e_list new_env 
   | EPrim1(op, e1) ->
+      let e1_t = tc_e e1 env in
       (match op with
-      | Add1 -> 
-          let e1_t = tc_e e1 env in
+      | Add1 
+      | Sub1 -> 
           if e1_t == TNumber then TNumber
-          else failwith ("Add1 Mistype expected TNumber but got ")
-      | IsBool -> TBoolean
-          
-       )
+          else failwith ("Add1/Sub1 Mistype expected TNumber but got ")
+      | IsBool 
+      | IsNum -> TBoolean)
   | EIf(e1, e2, e3) ->
       let e1_t = tc_e e1 env in
       let e2_t = tc_e e2 env in
@@ -41,32 +48,54 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
       else if e2_t != e3_t then failwith ("If values not the same")
       else e2_t
   | EPrim2(op, e1, e2) ->
-      (match op with
-      | Plus ->
-          let e1_t = tc_e e1 env in
-          let e2_t = tc_e e2 env in
-          if e1_t == TNumber && e2_t == TNumber then TNumber
-          else failwith ("Plus Mistype expected TNumber"))
-      | Less ->
-          let e1_t = tc_e e1 env in
-          let e2_t = tc_e e2 env in
-          if e1_t == TNumber && e2_t == TNumber then TBoolean
-          else failwith ("Plus Mistype expected TNumber"))
-
-  | ESet(s, e1) ->
       let e1_t = tc_e e1 env in
-     (* replace the type here *) 
-      e1_t
+      let e2_t = tc_e e2 env in
+      (match op with
+      | Plus 
+      | Minus
+      | Times ->
+          if e1_t == TNumber && e2_t == TNumber then TNumber
+          else failwith ("Plus/Minus/Times Mistype expected TNumber")
+      | Less 
+      | Greater
+      | Equal ->
+          if e1_t == TNumber && e2_t == TNumber then TBoolean
+          else failwith ("Less/Greater/Equal Mistype expected TNumber"))
+  | ESet(s, e1) ->
+      let e1_t = tc_e e1 env in e1_t
   | EWhile(c, b) ->
       let c_t = tc_e c env in
+      let apply_tc_e e_i = tc_e e_i env in
+      let body_tc_e = (List.map apply_tc_e b) in  
       if c_t == TBoolean then TBoolean
       else failwith ("While Mistype expected TBoolean")
   | EId(s) ->
     (match find env s with
     | Some(t) -> t
-    | None -> [("Variable identifier " ^ s ^ " unbound type")])
+    | None -> failwith ("Variable identifier " ^ s ^ " unbound type"))
 
   | _ -> failwith "Not yet implemented type check"
+
+and tc_b (b_list : bind_list) (env : type_env) : type_env =
+  match b_list with
+  | (b, e)::rest ->
+      let t_e = (tc_e e env) in
+      tc_b rest ((b, t_e)::env)
+  | [] -> env
+
+and tc_seq (e_list: expr list) (env : type_env) : typ =
+  match e_list with
+  | [e] ->
+      tc_e e env 
+  | e::rest ->
+      let e_t = tc_e e env in
+      (match e with
+      | ESet(s, _) ->
+          let replace_env = List.map (fun (k, v) -> if k = s then (k, e_t) else (k, v)) env in
+          tc_seq rest replace_env 
+      | _ ->
+          tc_seq rest env)
+      
 
 let rec precompile_bindings b env errs =
   match b with
