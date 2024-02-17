@@ -23,6 +23,7 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
   | ENumber(_) -> TNumber
   | EBool(_) -> TBoolean
   | ELet(_, _) -> TNumber (* placeholder *)
+    
   | EPrim1(op, e1) ->
       (match op with
       | Add1 -> 
@@ -46,6 +47,12 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
           let e2_t = tc_e e2 env in
           if e1_t == TNumber && e2_t == TNumber then TNumber
           else failwith ("Plus Mistype expected TNumber"))
+      | Less ->
+          let e1_t = tc_e e1 env in
+          let e2_t = tc_e e2 env in
+          if e1_t == TNumber && e2_t == TNumber then TBoolean
+          else failwith ("Plus Mistype expected TNumber"))
+
   | ESet(s, e1) ->
       let e1_t = tc_e e1 env in
      (* replace the type here *) 
@@ -54,6 +61,11 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
       let c_t = tc_e c env in
       if c_t == TBoolean then TBoolean
       else failwith ("While Mistype expected TBoolean")
+  | EId(s) ->
+    (match find env s with
+    | Some(t) -> t
+    | None -> [("Variable identifier " ^ s ^ " unbound type")])
+
   | _ -> failwith "Not yet implemented type check"
 
 let rec precompile_bindings b env errs =
