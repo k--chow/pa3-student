@@ -55,6 +55,9 @@ let autograde_compile_fail_tests =
     ("plus_arguments", "(+ 1 true)", "Type mismatch");
     ("if_condition", "(if 1 2 (+ 3 2))", "Type mismatch");
     ("if_branches", "(if true false (+ 3 2))", "Type mismatch");
+    ("let_bind", "(let ((x true) (y (+ x 1))) x)", "Type mismatch");
+    ("let_set", "(let ((x true)) (set x 1) (if x 1 2))", "Type mismatch");
+
   ]
 
 let testFailList =
