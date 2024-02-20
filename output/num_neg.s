@@ -4,14 +4,14 @@
 our_code_starts_here:
   mov [rsp - 8], rdi
 
-  mov rax, 0x2
-  cmp rax, 0x2
-  je near temp_if_branch_1
-  mov rax, 13
-  jmp near temp_end_if_2
-temp_if_branch_1:
-  mov rax, 11
-temp_end_if_2:
+  mov rax, -83
+  mov [rsp + -16], rax
+  mov rax, 21
+  mov [rsp + -24], rax
+  mov rax, [rsp + -16]
+  sub rax, 1
+  add rax, [rsp + -24]
+  jo near error_overflow
   ret
 internal_error_non_bool:
   mov rsi, rax

@@ -74,8 +74,6 @@ let rec tc_e (e : expr) (env : (string * typ) list) : typ =
     | Some(t) -> t
     | None -> failwith ("Variable identifier " ^ s ^ " unbound type"))
 
-  | _ -> failwith "Not yet implemented type check"
-
 and tc_b (b_list : bind_list) (env : type_env) : type_env =
   match b_list with
   | (b, e)::rest ->
@@ -139,6 +137,35 @@ let check (e : expr) : string list =
   match well_formed_e e [("input", -1)] with
   | [] -> []
   | errs -> failwith (String.concat "\n" errs)
+
+let check_overflow =
+  [
+    IJo("error_overflow");
+  ]
+
+let check_is_bool =
+  [
+    IAnd(Reg(RAX), Const(1));
+    ICmp(Reg(RAX), Const(0));
+    IJne("not_bool");
+    IMov(Reg(RAX), true_const);
+    IJmp("end_not_bool");
+    ILabel("not_bool");
+    IMov(Reg(RAX), false_const);
+    ILabel("end_not_bool");
+  ]
+
+let check_is_num =
+  [
+    IAnd(Reg(RAX), Const(1));
+    ICmp(Reg(RAX), Const(0));
+    IJe("not_num");
+    IMov(Reg(RAX), true_const);
+    IJmp("end_not_num");
+    ILabel("not_num");
+    IMov(Reg(RAX), false_const);
+    ILabel("end_not_num");
+  ]
 
 let rec compile_expr (e : expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
@@ -216,14 +243,88 @@ and compile_let b e si env =
           compile_expr e1 (si+1) env
           @ compile_let [] rest (si+1) env
       | [] -> []
-          
+
 and compile_prim1 op e si env =
-  (* TODO *)
-  failwith "Not yet implemented"
+  match op with
+  | Add1 ->
+    let num = compile_expr e si env in
+    num
+    @ [IAdd(Reg(RAX), Const(1 lsl 1))]
+    @ check_overflow
+  | Sub1 ->
+    let num = compile_expr e si env in
+    num
+    @ [ISub(Reg(RAX), Const(1 lsl 1))]
+    @ check_overflow
+  | IsNum ->
+    let num = compile_expr e si env in
+    num
+    @ check_is_num
+  | IsBool ->
+    let boo = compile_expr e si env in
+    boo
+    @ check_is_bool
+  | _ -> failwith "Not yet implemented"          
 
 and compile_prim2 op e1 e2 si env =
-  (* TODO *)
-  failwith "Not yet implemented"
+  let core =
+    match op with
+    | Plus ->
+      [ISub(Reg(RAX), Const(1));]
+      @ [IAdd(Reg(RAX), stackloc (si+1));]
+      @ check_overflow
+    | Minus ->
+      [ISub(Reg(RAX), stackloc (si+1));]
+      @ check_overflow
+      @ [IAdd(Reg(RAX), Const(1));]
+    | Times ->
+      [
+        IShr(Reg(RAX), Const(1));
+        IMov(stackloc (si+2), Reg(RAX));
+        IMov(Reg(RAX), stackloc (si+1));
+        IShr(Reg(RAX), Const(1));
+        IMul(Reg(RAX), stackloc (si+2));
+        IShl(Reg(RAX), Const(1));
+        IAdd(Reg(RAX), Const(1));
+      ]
+    | Equal ->
+      [
+        ICmp(Reg(RAX), stackloc (si+1));
+        IJe("equal_true");
+        IMov(Reg(RAX), false_const);
+        IJmp("end_equal");
+        ILabel("equal_true");
+        IMov(Reg(RAX), true_const);
+        ILabel("end_equal");
+      ]
+    | Greater ->
+      [
+        ICmp(Reg(RAX), stackloc (si+1));
+        IJg("greater_true");
+        IMov(Reg(RAX), false_const);
+        IJmp("end_greater");
+        ILabel("greater_true");
+        IMov(Reg(RAX), true_const);
+        ILabel("end_greater");
+      ]
+    | Less ->
+      [
+        ICmp(Reg(RAX), stackloc (si+1));
+        IJl("less_true");
+        IMov(Reg(RAX), false_const);
+        IJmp("end_less");
+        ILabel("less_true");
+        IMov(Reg(RAX), true_const);
+        ILabel("end_less");
+      ]
+    in
+  let a = compile_expr e1 si env in
+  let b = compile_expr e2 (si+1) env in
+  a
+  @ [IMov(stackloc si, Reg(RAX))]
+  @ b
+  @ [IMov(stackloc (si+1), Reg(RAX)); IMov(Reg(RAX), stackloc si)]
+  @ core
 
 let compile_to_string prog =
   let _ = check prog in
@@ -233,8 +334,28 @@ let compile_to_string prog =
                 "  global our_code_starts_here\n" ^
                 "our_code_starts_here:\n" ^
                 "  mov [rsp - 8], rdi\n" in
-  let postlude = [IRet]
-    (* TODO *) in
+  let postlude = [IRet] in
+  let erroring =
+    [
+      ILabel("internal_error_non_bool");
+      IMov(Reg(RSI), Reg(RAX));
+      IMov(Reg(RDI), Const(99));
+      (*IPush(Reg(RAX));*)
+      (*IPush(Const(1));*)
+      (*IPush(Sized(DWORD_PTR, Const64(Int64.of_int 99)));
+      IPush(Sized(DWORD_PTR, Const64(Int64.of_int 99)));
+      IPush(Sized(DWORD_PTR, Const64(Int64.of_int 99)));*)
+      ICall("error");
+      ILabel("internal_error_non_num");
+      IMov(Reg(RSI), Reg(RAX));
+      IMov(Reg(RDI), Const(299));
+      ICall("error");
+      ILabel("error_overflow");
+      IMov(Reg(RSI), Reg(RAX));
+      IMov(Reg(RDI), Const(399));
+      ICall("error");
+    ] 
+  in
   let compiled = (compile_expr prog 2 [("input", 1)]) in
-  let as_assembly_string = (to_asm (compiled @ postlude)) in
+  let as_assembly_string = (to_asm (compiled @ postlude @ erroring)) in
   sprintf "%s%s\n" prelude as_assembly_string

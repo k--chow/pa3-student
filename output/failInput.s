@@ -6,3 +6,15 @@ our_code_starts_here:
 
   mov rax, [rsp + -8]
   ret
+internal_error_non_bool:
+  mov rsi, rax
+  mov rdi, 99
+  call error
+internal_error_non_num:
+  mov rsi, rax
+  mov rdi, 299
+  call error
+error_overflow:
+  mov rsi, rax
+  mov rdi, 399
+  call error
